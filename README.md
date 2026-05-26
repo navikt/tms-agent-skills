@@ -1,4 +1,4 @@
-# tms-agent-skills
+# tms-copilot
 
 En collection av skills for AI-kodingsagenter. Skills er pakkede instruksjoner og skript som utvider agentenes evner.
 
