@@ -53,4 +53,4 @@ jobs:
       pull-requests: write
 ```
 
-Workflowen lager PR bare når skills har endret seg, kopierer kun skill-mappene, og beholder eventuelle ekstra lokale skills i målrepoet.
+Workflowen lager PR bare når skills har endret seg, kopierer kun skill-mappene, legger til skills som mangler i målrepoet, og beholder eventuelle ekstra lokale skills i målrepoet.
