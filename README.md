@@ -53,7 +53,7 @@ jobs:
       pull-requests: write
 ```
 
-Workflowen kopierer bare valgte skills/instructions, oppretter PR bare når noe faktisk er endret, og lar øvrige lokale mapper i målrepoet ligge urørt. Inputen er kommaseparert og bruker kun skill-navn eller instruction-navn uten `.md`.
+Workflowen kopierer valgte skills/instructions, oppretter PR bare når noe faktisk er endret, og lar øvrige lokale mapper i målrepoet ligge urørt. Inputen er kommaseparert og bruker kun skill-navn eller instruction-navn uten `.md`. Hvis `customizations` utelates, legges alle manglende skills/instructions fra kilderepoet til i målrepoet.
 
 ## Utvikling
 

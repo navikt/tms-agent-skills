@@ -14,7 +14,7 @@ on:
         required: false
         default: 'main'
       customizations:
-        description: 'Comma-separated customization names/file names without .md, e.g. "readme-update, astro-aksel.instructions"'
+        description: 'Comma-separated customization names/file names without .md, e.g. "readme-update, astro-aksel.instructions". Empty = add all missing customizations.'
         type: string
         required: false
         default: ''
@@ -61,67 +61,98 @@ jobs:
               | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
               | awk 'NF'
           )
+          add_missing_only=false
+          resolved_requests=()
           resolved_selections=()
 
-          for raw_item in "${selections[@]}"; do
-            item="$raw_item"
-            item="${item%\"}"
-            item="${item#\"}"
-            item="${item%\'}"
-            item="${item#\'}"
-            if [[ "$item" == *"/"* || "$item" == /* || "$item" == *".."* || "$item" == *.md ]]; then
-              echo "::error::Invalid customization '${item}'. Use only skill names or instruction names without path and without .md."
-              exit 1
-            fi
+          if [ "${#selections[@]}" -eq 0 ]; then
+            add_missing_only=true
+            shopt -s nullglob
+            for dir in /tmp/source/.github/skills/*; do
+              if [ -d "$dir" ]; then
+                resolved_requests+=("skills/$(basename "$dir")")
+              fi
+            done
+            for file in /tmp/source/.github/instructions/*; do
+              if [ -f "$file" ]; then
+                resolved_requests+=("instructions/$(basename "$file")")
+              fi
+            done
+            shopt -u nullglob
+          else
+            for raw_item in "${selections[@]}"; do
+              item="$raw_item"
+              item="${item%\"}"
+              item="${item#\"}"
+              item="${item%\'}"
+              item="${item#\'}"
+              if [[ "$item" == *"/"* || "$item" == /* || "$item" == *".."* || "$item" == *.md ]]; then
+                echo "::error::Invalid customization '${item}'. Use only skill names or instruction names without path and without .md."
+                exit 1
+              fi
 
-            skill_path=""
-            if [ -d "/tmp/source/.github/skills/${item}" ]; then
-              skill_path="skills/${item}"
-            fi
+              skill_path=""
+              if [ -d "/tmp/source/.github/skills/${item}" ]; then
+                skill_path="skills/${item}"
+              fi
 
-            instruction_paths=()
-            if [ -f "/tmp/source/.github/instructions/${item}.md" ]; then
-              instruction_paths+=("instructions/${item}.md")
-            fi
-            if [ -f "/tmp/source/.github/instructions/${item}.instructions.md" ]; then
-              instruction_paths+=("instructions/${item}.instructions.md")
-            fi
-            if [ -f "/tmp/source/.github/instructions/${item}.metadata.json" ]; then
-              instruction_paths+=("instructions/${item}.metadata.json")
-            fi
+              instruction_paths=()
+              if [ -f "/tmp/source/.github/instructions/${item}.md" ]; then
+                instruction_paths+=("instructions/${item}.md")
+              fi
+              if [ -f "/tmp/source/.github/instructions/${item}.instructions.md" ]; then
+                instruction_paths+=("instructions/${item}.instructions.md")
+              fi
+              if [ -f "/tmp/source/.github/instructions/${item}.metadata.json" ]; then
+                instruction_paths+=("instructions/${item}.metadata.json")
+              fi
 
-            if [ -n "$skill_path" ] && [ "${#instruction_paths[@]}" -gt 0 ]; then
-              echo "::error::Ambiguous customization '${item}'. It matches both skill and instruction files. Use a unique name."
-              exit 1
-            fi
+              if [ -n "$skill_path" ] && [ "${#instruction_paths[@]}" -gt 0 ]; then
+                echo "::error::Ambiguous customization '${item}'. It matches both skill and instruction files. Use a unique name."
+                exit 1
+              fi
 
-            resolved_paths=()
-            if [ -n "$skill_path" ]; then
-              resolved_paths+=("$skill_path")
-            elif [ "${#instruction_paths[@]}" -gt 0 ]; then
-              resolved_paths+=("${instruction_paths[@]}")
-            else
-              echo "::warning::Skipping missing customization: ${item}"
-              continue
-            fi
-
-            for resolved in "${resolved_paths[@]}"; do
-              source_path="/tmp/source/.github/${resolved}"
-              target_path=".github/${resolved}"
-
-              if [ -d "$source_path" ]; then
-                mkdir -p "$target_path"
-                rsync -a "$source_path"/ "$target_path"/
-              elif [ -f "$source_path" ]; then
-                mkdir -p "$(dirname "$target_path")"
-                rsync -a "$source_path" "$target_path"
+              resolved_paths=()
+              if [ -n "$skill_path" ]; then
+                resolved_paths+=("$skill_path")
+              elif [ "${#instruction_paths[@]}" -gt 0 ]; then
+                resolved_paths+=("${instruction_paths[@]}")
               else
-                echo "::warning::Skipping missing customization: .github/${resolved}"
+                echo "::warning::Skipping missing customization: ${item}"
                 continue
               fi
 
-              resolved_selections+=("$resolved")
+              resolved_requests+=("${resolved_paths[@]}")
             done
+          fi
+
+          for resolved in "${resolved_requests[@]}"; do
+            source_path="/tmp/source/.github/${resolved}"
+            target_path=".github/${resolved}"
+
+            if [ "$add_missing_only" = true ] && [ -e "$target_path" ]; then
+              continue
+            fi
+
+            if [ -d "$source_path" ]; then
+              mkdir -p "$target_path"
+              if [ "$add_missing_only" = true ]; then
+                rsync -a --ignore-existing "$source_path"/ "$target_path"/
+              else
+                rsync -a "$source_path"/ "$target_path"/
+              fi
+            elif [ -f "$source_path" ]; then
+              mkdir -p "$(dirname "$target_path")"
+              if [ "$add_missing_only" = true ] && [ -e "$target_path" ]; then
+                continue
+              fi
+              rsync -a "$source_path" "$target_path"
+            else
+              echo "::warning::Skipping missing customization: .github/${resolved}"
+              continue
+            fi
+
+            resolved_selections+=("$resolved")
           done
 
           {
