@@ -31,12 +31,12 @@ Repoet inneholder også delte instruction-filer under `.github/instructions/` so
 - `astro-aksel.instructions.md`: retningslinjer for Astro/Aksel-filer
 - `astro-aksel.metadata.json`: metadata for instruction-regelen
 
-## Flyt for synk av skills og instructions
+## Flyt for synk av customizations
 
 ```mermaid
 flowchart LR
     A[Endringer i customizations] -->B[Sync customizations]
-    B --> C[Opprett PR kun ved endringer]
+    B --> C[Opprett Pull Request]
 ```
 
 Repoet inneholder en reusable workflow for å kopiere `.github/skills/**` og `.github/instructions/**` til teamrepoer:
