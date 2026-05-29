@@ -13,6 +13,11 @@ on:
         type: string
         required: false
         default: 'main'
+      customizations:
+        description: 'Comma-separated customization names/file names without .md, e.g. "readme-update, astro-aksel.instructions"'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -40,17 +45,94 @@ jobs:
           git clone --depth 1 --branch "$SOURCE_REF" "https://github.com/$SOURCE_REPO.git" /tmp/source
           echo "SOURCE_SHA=$(git -C /tmp/source rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Sync skills and instructions
+      - name: Sync selected customizations
+        id: sync
+        env:
+          CUSTOMIZATIONS: ${{ inputs.customizations }}
         run: |
-          if [ -d /tmp/source/.github/skills ]; then
-            mkdir -p .github/skills
-            rsync -a /tmp/source/.github/skills/ .github/skills/
+          if [[ "$CUSTOMIZATIONS" == *"["* || "$CUSTOMIZATIONS" == *"]"* ]]; then
+            echo "::error::customizations must be comma-separated, e.g. readme-update, astro-aksel.instructions"
+            exit 1
           fi
 
-          if [ -d /tmp/source/.github/instructions ]; then
-            mkdir -p .github/instructions
-            rsync -a /tmp/source/.github/instructions/ .github/instructions/
-          fi
+          mapfile -t selections < <(
+            printf '%s' "$CUSTOMIZATIONS" \
+              | tr ',' '\n' \
+              | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+              | awk 'NF'
+          )
+          resolved_selections=()
+
+          for raw_item in "${selections[@]}"; do
+            item="$raw_item"
+            item="${item%\"}"
+            item="${item#\"}"
+            item="${item%\'}"
+            item="${item#\'}"
+            if [[ "$item" == *"/"* || "$item" == /* || "$item" == *".."* || "$item" == *.md ]]; then
+              echo "::error::Invalid customization '${item}'. Use only skill names or instruction names without path and without .md."
+              exit 1
+            fi
+
+            skill_path=""
+            if [ -d "/tmp/source/.github/skills/${item}" ]; then
+              skill_path="skills/${item}"
+            fi
+
+            instruction_paths=()
+            if [ -f "/tmp/source/.github/instructions/${item}.md" ]; then
+              instruction_paths+=("instructions/${item}.md")
+            fi
+            if [ -f "/tmp/source/.github/instructions/${item}.instructions.md" ]; then
+              instruction_paths+=("instructions/${item}.instructions.md")
+            fi
+            if [ -f "/tmp/source/.github/instructions/${item}.metadata.json" ]; then
+              instruction_paths+=("instructions/${item}.metadata.json")
+            fi
+
+            if [ -n "$skill_path" ] && [ "${#instruction_paths[@]}" -gt 0 ]; then
+              echo "::error::Ambiguous customization '${item}'. It matches both skill and instruction files. Use a unique name."
+              exit 1
+            fi
+
+            resolved_paths=()
+            if [ -n "$skill_path" ]; then
+              resolved_paths+=("$skill_path")
+            elif [ "${#instruction_paths[@]}" -gt 0 ]; then
+              resolved_paths+=("${instruction_paths[@]}")
+            else
+              echo "::warning::Skipping missing customization: ${item}"
+              continue
+            fi
+
+            for resolved in "${resolved_paths[@]}"; do
+              source_path="/tmp/source/.github/${resolved}"
+              target_path=".github/${resolved}"
+
+              if [ -d "$source_path" ]; then
+                mkdir -p "$target_path"
+                rsync -a "$source_path"/ "$target_path"/
+              elif [ -f "$source_path" ]; then
+                mkdir -p "$(dirname "$target_path")"
+                rsync -a "$source_path" "$target_path"
+              else
+                echo "::warning::Skipping missing customization: .github/${resolved}"
+                continue
+              fi
+
+              resolved_selections+=("$resolved")
+            done
+          done
+
+          {
+            echo "selected<<EOF"
+            if [ "${#resolved_selections[@]}" -eq 0 ]; then
+              echo "(none)"
+            else
+              printf '%s\n' "${resolved_selections[@]}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Collect changed files
         id: changes
@@ -77,9 +159,13 @@ jobs:
           commit-message: 'chore: sync tms-copilot'
           title: 'chore: sync tms-copilot'
           body: |
-            Syncs `.github/skills/**` and `.github/instructions/**` from [${{ inputs.source_repo }}](https://github.com/${{ inputs.source_repo }}).
+            Syncs selected customizations from [${{ inputs.source_repo }}](https://github.com/${{ inputs.source_repo }}).
 
             **Source:** `${{ inputs.source_repo }}@${{ env.SOURCE_SHA }}`
+            **Selected customizations:**
+            ```
+            ${{ steps.sync.outputs.selected }}
+            ```
 
             **Changed files:**
             ${{ steps.changes.outputs.files }}

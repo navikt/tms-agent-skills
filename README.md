@@ -46,12 +46,14 @@ on:
 jobs:
   sync:
     uses: navikt/tms-copilot/.github/workflows/tms-copilot-sync.yml@main
+    with:
+      customizations: "readme-update, astro-aksel.instructions"
     permissions:
       contents: write
       pull-requests: write
 ```
 
-Workflowen kopierer skill- og instruction-mapper, oppretter PR bare når noe faktisk er endret, og lar eventuelle ekstra lokale mapper i målrepoet ligge urørt.
+Workflowen kopierer bare valgte skills/instructions, oppretter PR bare når noe faktisk er endret, og lar øvrige lokale mapper i målrepoet ligge urørt. Inputen er kommaseparert og bruker kun skill-navn eller instruction-navn uten `.md`.
 
 ## Utvikling
 
